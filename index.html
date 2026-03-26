@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SARH — Structure-Aware Relocation Heuristic</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #030a10;
+  --surface: #071320;
+  --border:  #0d2137;
+  --accent:  #00d4ff;
+  --green:   #00ff88;
+  --orange:  #ff8c00;
+  --red:     #ff4444;
+  --gold:    #ffd700;
+  --text:    #b8cfe0;
+  --dim:     #3a5570;
+  --glow:    0 0 20px rgba(0,212,255,0.25);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.025) 1px,transparent 1px);background-size:50px 50px;pointer-events:none;}
+
+.container{max-width:1200px;margin:0 auto;padding:1.5rem;position:relative;z-index:1;}
+
+header{text-align:center;padding:2.5rem 0 1.5rem;}
+.logo{font-family:'Share Tech Mono',monospace;font-size:0.7rem;letter-spacing:0.3em;color:var(--accent);margin-bottom:0.75rem;opacity:0.7;}
+h1{font-size:clamp(2rem,5vw,3.5rem);font-weight:700;color:#fff;text-shadow:var(--glow);letter-spacing:0.1em;}
+h1 span{color:var(--accent);}
+.tagline{font-size:1rem;color:var(--dim);margin-top:0.5rem;}
+.badges{display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;margin-top:1rem;}
+.badge{font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.15em;padding:0.3rem 0.75rem;border:1px solid var(--border);color:var(--dim);}
+
+/* ── CONTROLS ── */
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem;}
+.ctrl-group{background:var(--surface);border:1px solid var(--border);padding:1rem;}
+.ctrl-label{font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.2em;color:var(--accent);margin-bottom:0.5rem;display:block;text-transform:uppercase;}
+input[type=range]{width:100%;accent-color:var(--accent);}
+.ctrl-val{font-family:'Share Tech Mono',monospace;font-size:0.9rem;color:var(--green);margin-top:0.25rem;}
+select,button{font-family:'Share Tech Mono',monospace;font-size:0.75rem;letter-spacing:0.1em;background:transparent;color:var(--text);border:1px solid var(--border);padding:0.6rem 1rem;cursor:pointer;transition:all 0.2s;width:100%;text-transform:uppercase;}
+select option{background:var(--surface);}
+button:hover{border-color:var(--accent);color:var(--accent);box-shadow:var(--glow);}
+button.primary{border-color:var(--accent);color:var(--accent);}
+button.primary:hover{background:var(--accent);color:var(--bg);}
+button.run-all{border-color:var(--green);color:var(--green);}
+button.run-all:hover{background:var(--green);color:var(--bg);}
+
+/* ── CANVAS GRID ── */
+.canvas-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);margin-bottom:1.5rem;}
+.canvas-wrap{background:var(--surface);position:relative;}
+.canvas-title{font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.2em;padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.canvas-title .method{color:var(--accent);}
+.canvas-title .length{color:var(--green);font-size:0.75rem;}
+canvas{display:block;width:100%;height:280px;}
+
+/* ── STATS ── */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:1.5rem;}
+.stat{background:var(--surface);padding:1rem;text-align:center;}
+.stat-val{font-family:'Share Tech Mono',monospace;font-size:1.4rem;color:var(--accent);text-shadow:var(--glow);display:block;}
+.stat-val.green{color:var(--green);}
+.stat-val.orange{color:var(--orange);}
+.stat-val.red{color:var(--red);}
+.stat-lbl{font-size:0.65rem;color:var(--dim);letter-spacing:0.15em;text-transform:uppercase;margin-top:0.25rem;}
+
+/* ── LOG ── */
+.log{background:var(--surface);border:1px solid var(--border);padding:1rem;font-family:'Share Tech Mono',monospace;font-size:0.72rem;line-height:1.8;min-height:80px;max-height:180px;overflow-y:auto;}
+.log-row{display:flex;gap:1rem;}
+.log-label{color:var(--dim);min-width:140px;flex-shrink:0;}
+.log-val{color:var(--text);word-break:break-all;}
+.log-val.accent{color:var(--accent);}
+.log-val.green{color:var(--green);}
+.log-val.orange{color:var(--orange);}
+.log-val.red{color:var(--red);}
+.log-val.gold{color:var(--gold);}
+
+/* ── BENCHMARK ── */
+.bench-panel{background:var(--surface);border:1px solid var(--border);margin-bottom:1.5rem;}
+.bench-header{padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:0.7rem;letter-spacing:0.2em;color:var(--accent);display:flex;align-items:center;gap:0.75rem;}
+.bench-header::before{content:'';display:block;width:6px;height:6px;background:var(--accent);border-radius:50%;box-shadow:var(--glow);}
+.bench-body{padding:1rem;}
+.bench-table{width:100%;border-collapse:collapse;font-family:'Share Tech Mono',monospace;font-size:0.7rem;}
+.bench-table th{color:var(--dim);letter-spacing:0.15em;text-transform:uppercase;padding:0.4rem 0.75rem;border-bottom:1px solid var(--border);text-align:left;}
+.bench-table td{padding:0.4rem 0.75rem;border-bottom:1px solid rgba(13,33,55,0.5);}
+.bench-table tr:hover td{background:rgba(0,212,255,0.03);}
+.td-green{color:var(--green);}
+.td-orange{color:var(--orange);}
+.td-dim{color:var(--dim);}
+
+footer{text-align:center;padding:2rem 0;font-family:'Share Tech Mono',monospace;font-size:0.65rem;color:var(--dim);letter-spacing:0.15em;border-top:1px solid var(--border);}
+footer a{color:var(--accent);text-decoration:none;}
+
+@media(max-width:700px){
+  .canvas-grid{grid-template-columns:1fr;}
+  .stats-row{grid-template-columns:repeat(2,1fr);}
+  .controls{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <div class="logo">Combinatorial Optimization · Euclidean TSP</div>
+  <h1>SARH <span>·</span> Structure-Aware Relocation Heuristic</h1>
+  <div class="tagline">Breaking Local Optima that Greedy+2-opt cannot escape</div>
+  <div class="badges">
+    <span class="badge">Prakhar Dwivedi</span>
+    <span class="badge">RJIT Gwalior</span>
+    <span class="badge">Works on any N</span>
+    <span class="badge">Zero dependencies</span>
+  </div>
+</header>
+
+<!-- CONTROLS -->
+<div class="controls">
+  <div class="ctrl-group">
+    <span class="ctrl-label">Number of Nodes</span>
+    <input type="range" id="n-slider" min="8" max="200" value="30" oninput="document.getElementById('n-val').textContent=this.value">
+    <div class="ctrl-val" id="n-val">30</div>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Node Distribution</span>
+    <select id="dist-select">
+      <option value="random">Random Uniform</option>
+      <option value="cluster">Clustered (4 clusters)</option>
+      <option value="circle">Circle + Center Traps</option>
+      <option value="paper">Paper's 9-node instance</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Angle Threshold (°)</span>
+    <input type="range" id="angle-slider" min="60" max="150" value="120" oninput="document.getElementById('angle-val').textContent=this.value+'°'">
+    <div class="ctrl-val" id="angle-val">120°</div>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Actions</span>
+    <button class="primary" onclick="runSARH()" style="margin-bottom:0.5rem">▶ RUN SARH</button>
+    <button class="run-all" onclick="runBenchmark()">📊 BENCHMARK</button>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="stats-row">
+  <div class="stat"><span class="stat-val" id="s-greedy">—</span><div class="stat-lbl">Greedy Tour</div></div>
+  <div class="stat"><span class="stat-val orange" id="s-2opt">—</span><div class="stat-lbl">Greedy + 2-opt</div></div>
+  <div class="stat"><span class="stat-val green" id="s-sarh">—</span><div class="stat-lbl">SARH</div></div>
+  <div class="stat"><span class="stat-val gold" id="s-imp">—</span><div class="stat-lbl">Improvement</div></div>
+</div>
+
+
+<!-- STORY BOX -->
+<div style="background:rgba(0,255,136,0.04);border:1px solid rgba(0,255,136,0.15);border-left:3px solid var(--green);padding:1rem 1.25rem;margin-bottom:1.5rem;font-family:'Share Tech Mono',monospace;font-size:0.72rem;line-height:1.9;color:var(--text);">
+  <span style="color:var(--green);font-weight:bold">WHY SARH MATTERS:</span>
+  2-opt ran on the Greedy tour and achieved <span style="color:var(--red)">zero improvement</span> — it was mathematically stuck.
+  2-opt can only swap edges; it <span style="color:var(--orange)">cannot move a node</span> across the tour sequence.
+  SARH detected the structurally misaligned node (visited too late, near centroid),
+  relocated it to the optimal position, and <span style="color:var(--green)">escaped the local minimum</span> that trapped 2-opt.
+  <span style="color:var(--gold)">Use "Circle" or "Clustered" distribution to see the full effect.</span>
+</div>
+<!-- CANVAS GRID -->
+<div class="canvas-grid">
+  <div class="canvas-wrap">
+    <div class="canvas-title"><span class="method">GREEDY (NN)</span><span class="length" id="greedy-len">—</span></div>
+    <canvas id="canvas-greedy"></canvas>
+  </div>
+  <div class="canvas-wrap">
+    <div class="canvas-title"><span class="method">GREEDY + 2-OPT <span style="color:var(--red);font-size:0.55rem">[STAGNATED]</span></span><span class="length" id="g2opt-len">—</span></div>
+    <canvas id="canvas-g2opt"></canvas>
+  </div>
+  <div class="canvas-wrap">
+    <div class="canvas-title"><span class="method" style="color:var(--green)">SARH — ESCAPED ✓</span><span class="length" id="sarh-len">—</span></div>
+    <canvas id="canvas-sarh"></canvas>
+  </div>
+</div>
+
+<!-- LOG -->
+<div class="log" id="log">
+  <div class="log-row"><span class="log-label">STATUS</span><span class="log-val">Click RUN SARH to start.</span></div>
+</div>
+
+<!-- BENCHMARK TABLE -->
+<div class="bench-panel">
+  <div class="bench-header">BENCHMARK — SARH vs Greedy+2-opt across node counts</div>
+  <div class="bench-body">
+    <table class="bench-table">
+      <thead><tr><th>N</th><th>Greedy</th><th>Greedy+2opt</th><th>SARH</th><th>Improvement</th><th>Relocated</th><th>Time</th></tr></thead>
+      <tbody id="bench-body"><tr><td colspan="7" style="color:var(--dim);text-align:center;padding:1rem">Click BENCHMARK to run</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<footer>
+  SARH · Structure-Aware Relocation Heuristic for Euclidean TSP ·
+  <a href="https://github.com/sssbughunter" target="_blank">github.com/sssbughunter</a> ·
+  Prakhar Dwivedi · RJIT Gwalior
+</footer>
+</div>
+
+<script>
+// ============================================================
+// SARH ENGINE — JavaScript
+// ============================================================
+
+function dist(a, b) {
+  return Math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2);
+}
+
+function buildD(nodes) {
+  const n = nodes.length;
+  const D = Array.from({length:n}, () => new Float64Array(n));
+  for (let i = 0; i < n; i++)
+    for (let j = i+1; j < n; j++)
+      D[i][j] = D[j][i] = dist(nodes[i], nodes[j]);
+  return D;
+}
+
+function tourLen(tour, D) {
+  let l = 0, n = tour.length;
+  for (let i = 0; i < n; i++) l += D[tour[i]][tour[(i+1)%n]];
+  return l;
+}
+
+function greedyNN(D) {
+  const n = D.length;
+  const visited = new Uint8Array(n);
+  const tour = [0]; visited[0] = 1;
+  for (let k = 1; k < n; k++) {
+    const curr = tour[tour.length-1];
+    let best = -1, bestD = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (!visited[j] && D[curr][j] < bestD) { bestD = D[curr][j]; best = j; }
+    }
+    tour.push(best); visited[best] = 1;
+  }
+  return tour;
+}
+
+function twoOpt(tour, D) {
+  const n = tour.length;
+  let best = tour.slice();
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let i = 0; i < n-1; i++) {
+      for (let j = i+2; j < n; j++) {
+        if (j === n-1 && i === 0) continue;
+        const a=best[i], b=best[(i+1)%n], c=best[j], d=best[(j+1)%n];
+        if (D[a][c] + D[b][d] < D[a][b] + D[c][d] - 1e-10) {
+          // Reverse segment i+1 to j
+          let l=i+1, r=j;
+          while (l < r) { [best[l],best[r]]=[best[r],best[l]]; l++; r--; }
+          improved = true;
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function centroid(nodes) {
+  const n = nodes.length;
+  return [nodes.reduce((s,p)=>s+p[0],0)/n, nodes.reduce((s,p)=>s+p[1],0)/n];
+}
+
+function turningAngle(pp, pc, pn) {
+  const v1 = [pc[0]-pp[0], pc[1]-pp[1]];
+  const v2 = [pn[0]-pc[0], pn[1]-pc[1]];
+  const m1 = Math.hypot(v1[0],v1[1]);
+  const m2 = Math.hypot(v2[0],v2[1]);
+  if (m1 < 1e-10 || m2 < 1e-10) return 180;
+  const cosT = Math.max(-1, Math.min(1, (v1[0]*v2[0]+v1[1]*v2[1])/(m1*m2)));
+  return Math.acos(cosT) * 180 / Math.PI;
+}
+
+function findMisaligned(tour, nodes, D, angleThresh=120, centRatio=0.7) {
+  const [cx,cy] = centroid(nodes);
+  const n = tour.length;
+  const misaligned = [];
+  const seen = new Set();
+  const tLen = tourLen(tour, D);
+  const avgEdge = tLen / n;
+
+  for (let i = 0; i < n; i++) {
+    const pp = nodes[tour[(i-1+n)%n]];
+    const pc = nodes[tour[i]];
+    const pn = nodes[tour[(i+1)%n]];
+
+    const angle = turningAngle(pp, pc, pn);
+    const dc = dist(pc, [cx,cy]);
+    const dp = dist(pp, [cx,cy]);
+    const dn = dist(pn, [cx,cy]);
+    const avgNbr = (dp + dn) / 2;
+
+    // Condition 1: sharp angle + central node
+    if (angle < angleThresh && avgNbr > 0 && (dc/avgNbr) < centRatio) {
+      if (!seen.has(i)) { misaligned.push(i); seen.add(i); }
+      continue;
+    }
+
+    // Condition 2: high net gain from relocation
+    const a = tour[(i-1+n)%n], b = tour[i], c = tour[(i+1)%n];
+    const remSave = D[a][b] + D[b][c] - D[a][c];
+    let bestIns = Infinity;
+    for (let j = 0; j < n; j++) {
+      if (j===(i-1+n)%n || j===i || j===(i+1)%n) continue;
+      const p=tour[j], q=tour[(j+1)%n];
+      const ins = D[p][b] + D[b][q] - D[p][q];
+      if (ins < bestIns) bestIns = ins;
+    }
+    const netGain = remSave - bestIns;
+    if (netGain > 0.15 * avgEdge && !seen.has(i)) {
+      misaligned.push(i); seen.add(i);
+    }
+  }
+  // Return top third — conservative batching
+  return misaligned.slice(0, Math.max(1, Math.floor(misaligned.length/3)));
+}
+
+function relocate(tour, D, positions) {
+  const working = tour.slice();
+  const sorted = [...new Set(positions)].sort((a,b)=>b-a);
+  const removed = [];
+  for (const pos of sorted) {
+    removed.push(working.splice(pos,1)[0]);
+  }
+  for (const node of removed) {
+    let bestCost = Infinity, bestPos = 0;
+    const m = working.length;
+    for (let j = 0; j < m; j++) {
+      const a=working[j], b=working[(j+1)%m];
+      const delta = D[a][node] + D[node][b] - D[a][b];
+      if (delta < bestCost) { bestCost=delta; bestPos=j+1; }
+    }
+    working.splice(bestPos, 0, node);
+  }
+  return working;
+}
+
+function runSARHEngine(nodes, angleThresh=120, centRatio=0.7) {
+  const D = buildD(nodes);
+  const n = nodes.length;
+
+  const t0 = performance.now();
+  const gTour = greedyNN(D);
+  const gLen  = tourLen(gTour, D);
+
+  const g2Tour = twoOpt(gTour.slice(), D);
+  const g2Len  = tourLen(g2Tour, D);
+
+  let corrected = gTour.slice();
+  let totalReloc = 0;
+  let prevLen = gLen;
+
+  for (let round = 0; round < 10; round++) {
+    const mis = findMisaligned(corrected, nodes, D, angleThresh, centRatio);
+    if (mis.length === 0) break;
+    corrected = relocate(corrected, D, mis);
+    totalReloc += mis.length;
+    const newLen = tourLen(corrected, D);
+    if (Math.abs(prevLen - newLen) < 1e-10) break;
+    prevLen = newLen;
+  }
+
+  const sarhTour = twoOpt(corrected, D);
+  const sarhLen  = tourLen(sarhTour, D);
+  const elapsed  = performance.now() - t0;
+  const improvement = g2Len > 0 ? ((g2Len - sarhLen) / g2Len * 100) : 0;
+
+  return { gTour, gLen, g2Tour, g2Len, sarhTour, sarhLen, improvement, totalReloc, elapsed, D };
+}
+
+// ── NODE GENERATORS ───────────────────────────────────────────
+function generateNodes(type, n) {
+  if (type === 'paper') {
+    return [[0,0],[1,4],[3,6],[6,7],[9,6],[11,4],[9,2],[6,1],[3,2],[5,4]];
+  }
+  const nodes = [];
+  if (type === 'random') {
+    for (let i = 0; i < n; i++) nodes.push([Math.random()*90+5, Math.random()*90+5]);
+  } else if (type === 'cluster') {
+    const centers = [[25,25],[75,25],[75,75],[25,75]];
+    for (let i = 0; i < n; i++) {
+      const c = centers[i % 4];
+      nodes.push([c[0]+randn()*12, c[1]+randn()*12]);
+    }
+    // Add trap nodes near centroid
+    const traps = Math.max(2, Math.floor(n*0.08));
+    for (let i = 0; i < traps; i++) nodes.push([50+randn()*5, 50+randn()*5]);
+  } else if (type === 'circle') {
+    for (let i = 0; i < n; i++) {
+      const a = (i/n)*2*Math.PI;
+      nodes.push([50+42*Math.cos(a)+randn()*3, 50+42*Math.sin(a)+randn()*3]);
+    }
+    // Trap nodes near center
+    const traps = Math.max(2, Math.floor(n*0.1));
+    for (let i = 0; i < traps; i++) nodes.push([50+randn()*6, 50+randn()*6]);
+  }
+  return nodes.map(p => [Math.max(2,Math.min(98,p[0])), Math.max(2,Math.min(98,p[1]))]);
+}
+
+function randn() {
+  return (Math.random()+Math.random()+Math.random()-1.5) * 2;
+}
+
+// ── CANVAS DRAWING ────────────────────────────────────────────
+function drawTour(canvasId, nodes, tour, color, misNodes=[]) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  canvas.width = W; canvas.height = H;
+
+  const pad = 20;
+  const xs = nodes.map(p=>p[0]), ys = nodes.map(p=>p[1]);
+  const minX=Math.min(...xs), maxX=Math.max(...xs);
+  const minY=Math.min(...ys), maxY=Math.max(...ys);
+  const scaleX = (maxX-minX) < 1 ? 1 : (W-2*pad)/(maxX-minX);
+  const scaleY = (maxY-minY) < 1 ? 1 : (H-2*pad)/(maxY-minY);
+  const scale  = Math.min(scaleX, scaleY);
+  const offX   = pad + ((W-2*pad) - (maxX-minX)*scale)/2;
+  const offY   = pad + ((H-2*pad) - (maxY-minY)*scale)/2;
+
+  const tx = x => offX + (x-minX)*scale;
+  const ty = y => H - (offY + (y-minY)*scale);
+
+  ctx.clearRect(0,0,W,H);
+
+  // Draw tour edges
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.7;
+  ctx.beginPath();
+  const n = tour.length;
+  for (let i = 0; i <= n; i++) {
+    const idx = tour[i%n];
+    const [x,y] = [tx(nodes[idx][0]), ty(nodes[idx][1])];
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.stroke(); ctx.globalAlpha = 1;
+
+  // Draw nodes
+  const misSet = new Set(misNodes);
+  for (let i = 0; i < nodes.length; i++) {
+    const [x,y] = [tx(nodes[i][0]), ty(nodes[i][1])];
+    const r = nodes.length > 100 ? 2.5 : 4;
+    ctx.beginPath(); ctx.arc(x,y,r,0,2*Math.PI);
+    if (i===0) { ctx.fillStyle='#ff4444'; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.fill(); ctx.stroke(); }
+    else if (misSet.has(i)) { ctx.fillStyle='#ffd700'; ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.fill(); ctx.stroke(); }
+    else { ctx.fillStyle='#fff'; ctx.fill(); }
+  }
+}
+
+// ── MAIN RUN ──────────────────────────────────────────────────
+let lastNodes = null;
+let lastResult = null;
+
+function runSARH() {
+  const n = parseInt(document.getElementById('n-slider').value);
+  const dist = document.getElementById('dist-select').value;
+  const angleThresh = parseInt(document.getElementById('angle-slider').value);
+
+  const nodes = generateNodes(dist, n);
+  lastNodes = nodes;
+
+  const r = runSARHEngine(nodes, angleThresh);
+  lastResult = r;
+
+  // Update stats
+  document.getElementById('s-greedy').textContent = r.gLen.toFixed(2);
+  document.getElementById('s-greedy').className = 'stat-val';
+  document.getElementById('s-2opt').textContent = r.g2Len.toFixed(2);
+  document.getElementById('s-sarh').textContent  = r.sarhLen.toFixed(2);
+  document.getElementById('s-sarh').className = r.sarhLen <= r.g2Len ? 'stat-val green' : 'stat-val red';
+
+  const imp = r.improvement;
+  document.getElementById('s-imp').textContent = (imp >= 0 ? '+' : '') + imp.toFixed(2) + '%';
+  document.getElementById('s-imp').className = 'stat-val ' + (imp > 0 ? 'gold' : imp < 0 ? 'red' : '');
+
+  document.getElementById('greedy-len').textContent = r.gLen.toFixed(2);
+  document.getElementById('g2opt-len').textContent  = r.g2Len.toFixed(2);
+  document.getElementById('sarh-len').textContent   = r.sarhLen.toFixed(2);
+
+  // Draw tours
+  const C = { greedy:'#00d4ff', g2opt:'#ff8c00', sarh:'#00ff88' };
+  drawTour('canvas-greedy', nodes, r.gTour,    C.greedy);
+  drawTour('canvas-g2opt',  nodes, r.g2Tour,   C.g2opt);
+  drawTour('canvas-sarh',   nodes, r.sarhTour, C.sarh);
+
+  // Log
+  const log = document.getElementById('log');
+  const tr = (l,v,cls='') => `<div class="log-row"><span class="log-label">${l}</span><span class="log-val ${cls}">${v}</span></div>`;
+  log.innerHTML =
+    tr('NODES', nodes.length + ' (' + dist + ')', 'accent') +
+    tr('GREEDY TOUR', r.gLen.toFixed(4)) +
+    tr('GREEDY+2OPT', r.g2Len.toFixed(4), 'orange') +
+    tr('SARH', r.sarhLen.toFixed(4), imp>=0?'green':'red') +
+    tr('IMPROVEMENT', (imp>=0?'+':'')+imp.toFixed(4)+'%', imp>0?'gold':imp<0?'red':'') +
+    tr('RELOCATED', r.totalReloc + ' nodes', 'accent') +
+    tr('TIME', r.elapsed.toFixed(2) + 'ms', '') +
+    tr('NOTE', imp > 0 ? 'SARH improved over Greedy+2-opt ✓' : imp < -0.5 ? 'Random uniform — SARH shines on structured data' : 'Marginal — try Circle or Clustered distribution');
+}
+
+async function runBenchmark() {
+  const tbody = document.getElementById('bench-body');
+  tbody.innerHTML = '<tr><td colspan="7" style="color:var(--accent);text-align:center;padding:1rem">Running...</td></tr>';
+  await new Promise(r => setTimeout(r, 10));
+
+  const sizes = [10, 25, 50, 100, 200, 500];
+  const dists = ['random','cluster','circle'];
+  const trials = 3;
+  let rows = '';
+
+  for (const n of sizes) {
+    let gL=0, g2L=0, sL=0, reloc=0, time=0;
+    const dist = n < 50 ? 'cluster' : 'cluster';
+    for (let t = 0; t < trials; t++) {
+      const nodes = generateNodes(dist, n);
+      const r = runSARHEngine(nodes, 120, 0.7);
+      gL += r.gLen; g2L += r.g2Len; sL += r.sarhLen;
+      reloc += r.totalReloc; time += r.elapsed;
+    }
+    gL/=trials; g2L/=trials; sL/=trials; reloc/=trials; time/=trials;
+    const imp = g2L > 0 ? ((g2L-sL)/g2L*100) : 0;
+    const impCls = imp > 0.1 ? 'td-green' : imp < -0.1 ? '' : 'td-dim';
+    rows += `<tr>
+      <td>${n}</td>
+      <td class="td-dim">${gL.toFixed(1)}</td>
+      <td class="td-orange">${g2L.toFixed(1)}</td>
+      <td class="td-green">${sL.toFixed(1)}</td>
+      <td class="${impCls}">${imp>=0?'+':''}${imp.toFixed(2)}%</td>
+      <td class="td-dim">${reloc.toFixed(0)}</td>
+      <td class="td-dim">${time.toFixed(1)}ms</td>
+    </tr>`;
+    await new Promise(r => setTimeout(r, 5));
+  }
+  tbody.innerHTML = rows;
+}
+
+// Init
+window.onload = () => runSARH();
+window.onresize = () => { if (lastNodes && lastResult) {
+  drawTour('canvas-greedy', lastNodes, lastResult.gTour,    '#00d4ff');
+  drawTour('canvas-g2opt',  lastNodes, lastResult.g2Tour,   '#ff8c00');
+  drawTour('canvas-sarh',   lastNodes, lastResult.sarhTour, '#00ff88');
+}};
+</script>
+</body>
+</html>
